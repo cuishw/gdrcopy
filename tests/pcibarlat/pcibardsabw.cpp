@@ -43,6 +43,13 @@
 #define PAGE_ROUND_DOWN(x, n) ((x) & ~((n) - 1))
 #define PAGE_ROUND_UP(x, n) (((x) + ((n) - 1)) & ~((n) - 1))
 
+#ifndef DSA_COMP_STATUS_MASK
+#define DSA_COMP_STATUS_MASK 0x7f
+#endif
+#ifndef DSA_COMP_STATUS
+#define DSA_COMP_STATUS(status) ((status) & DSA_COMP_STATUS_MASK)
+#endif
+
 static size_t per_thread_size = (size_t)8 << 20;
 static size_t bar_offset = 0;
 static int num_iters = 100;

@@ -39,6 +39,10 @@
 #include <string>
 #include <vector>
 
+#if defined(__x86_64__) || defined(__i386__)
+#include <immintrin.h>
+#endif
+
 #ifndef ACCESS_ONCE
 #define ACCESS_ONCE(x) (*(volatile __typeof__((x)) *)&(x))
 #endif
@@ -114,7 +118,6 @@ struct worker_args {
     int iters;
     bool do_write;
     void *bar_ptr;
-    void *host_buf;
     size_t size;
     pthread_barrier_t *start_barrier;
     pthread_barrier_t *end_barrier;
@@ -290,25 +293,92 @@ static void pin_worker_if_requested(int cpu_id)
         die_errno("sched_setaffinity");
 }
 
+static volatile uint64_t stream_read_sink;
+
+static void stream_write_bar(void *dst, size_t size, uint64_t pattern)
+{
+    char *d = (char *)dst;
+    size_t remaining = size;
+
+#if defined(__x86_64__) || defined(__i386__)
+    if (is_aligned((uintptr_t)d, sizeof(__m128i))) {
+        __m128i value = _mm_set1_epi64x((long long)pattern);
+        while (remaining >= sizeof(__m128i)) {
+            _mm_stream_si128((__m128i *)d, value);
+            d += sizeof(__m128i);
+            remaining -= sizeof(__m128i);
+        }
+        CPU_STORE_FENCE();
+    }
+#endif
+
+    while (remaining >= sizeof(uint64_t)) {
+        WRITE_ONCE(*(uint64_t *)d, pattern);
+        d += sizeof(uint64_t);
+        remaining -= sizeof(uint64_t);
+    }
+    while (remaining > 0) {
+        WRITE_ONCE(*(uint8_t *)d, (uint8_t)pattern);
+        ++d;
+        --remaining;
+    }
+    CPU_STORE_FENCE();
+}
+
+static uint64_t stream_read_bar(const void *src, size_t size)
+{
+    const char *s = (const char *)src;
+    size_t remaining = size;
+    uint64_t result = 0;
+
+#if defined(__x86_64__) || defined(__i386__)
+    if (use_sse41_copy && is_aligned((uintptr_t)s, sizeof(__m128i))) {
+        __m128i acc = _mm_setzero_si128();
+        while (remaining >= sizeof(__m128i)) {
+            __m128i value = _mm_stream_load_si128((__m128i *)s);
+            acc = _mm_xor_si128(acc, value);
+            s += sizeof(__m128i);
+            remaining -= sizeof(__m128i);
+        }
+        uint64_t tmp[2];
+        _mm_storeu_si128((__m128i *)tmp, acc);
+        result ^= tmp[0] ^ tmp[1];
+    }
+#endif
+
+    while (remaining >= sizeof(uint64_t)) {
+        result ^= READ_ONCE(*(const uint64_t *)s);
+        s += sizeof(uint64_t);
+        remaining -= sizeof(uint64_t);
+    }
+    while (remaining > 0) {
+        result ^= READ_ONCE(*(const uint8_t *)s);
+        ++s;
+        --remaining;
+    }
+    CPU_LOAD_FENCE();
+    return result;
+}
+
 static void *stream_worker(void *opaque)
 {
     struct worker_args *args = (struct worker_args *)opaque;
+    uint64_t local_sink = 0;
     pin_worker_if_requested(args->cpu_id);
 
-    memset(args->host_buf, 0xa5 ^ args->index, args->size);
-    if (args->do_write) {
-        copy_to_bar(args->bar_ptr, args->host_buf, args->size);
-    } else {
-        copy_from_bar(args->host_buf, args->bar_ptr, args->size);
-    }
+    if (args->do_write)
+        stream_write_bar(args->bar_ptr, args->size, 0xa5a5a5a500000000ULL | (uint64_t)args->index);
+    else
+        local_sink ^= stream_read_bar(args->bar_ptr, args->size);
 
     pthread_barrier_wait(args->start_barrier);
     for (int iter = 0; iter < args->iters; ++iter) {
         if (args->do_write)
-            copy_to_bar(args->bar_ptr, args->host_buf, args->size);
+            stream_write_bar(args->bar_ptr, args->size, 0x5a5a5a5a00000000ULL | (uint64_t)iter | ((uint64_t)args->index << 32));
         else
-            copy_from_bar(args->host_buf, args->bar_ptr, args->size);
+            local_sink ^= stream_read_bar(args->bar_ptr, args->size);
     }
+    stream_read_sink ^= local_sink;
     pthread_barrier_wait(args->end_barrier);
     return NULL;
 }
@@ -319,7 +389,6 @@ static double run_stream_test(void *bar_ptr, size_t worker_size, bool write_test
     pthread_barrier_t end_barrier;
     std::vector<pthread_t> threads(num_threads);
     std::vector<struct worker_args> args(num_threads);
-    std::vector<void *> host_bufs(num_threads, NULL);
     worker_size = (worker_size / 64) * 64;
     if (worker_size == 0)
         die_msg("per-thread mapping slice is too small after alignment");
@@ -330,16 +399,11 @@ static double run_stream_test(void *bar_ptr, size_t worker_size, bool write_test
         die_msg("pthread_barrier_init failed");
 
     for (int i = 0; i < num_threads; ++i) {
-        if (posix_memalign(&host_bufs[i], 64, worker_size) != 0)
-            die_msg("posix_memalign failed");
-        (void)mlock(host_bufs[i], worker_size);
-
         args[i].index = i;
         args[i].cpu_id = first_cpu >= 0 ? first_cpu + i : -1;
         args[i].iters = num_iters;
         args[i].do_write = write_test;
         args[i].bar_ptr = (void *)((uintptr_t)bar_ptr + (uintptr_t)i * worker_size);
-        args[i].host_buf = host_bufs[i];
         args[i].size = worker_size;
         args[i].start_barrier = &start_barrier;
         args[i].end_barrier = &end_barrier;
@@ -355,8 +419,6 @@ static double run_stream_test(void *bar_ptr, size_t worker_size, bool write_test
 
     for (int i = 0; i < num_threads; ++i) {
         pthread_join(threads[i], NULL);
-        munlock(host_bufs[i], worker_size);
-        free(host_bufs[i]);
     }
     pthread_barrier_destroy(&start_barrier);
     pthread_barrier_destroy(&end_barrier);

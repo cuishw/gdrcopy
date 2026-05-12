@@ -23,6 +23,7 @@ STREAMBW_OBJS := pcibarstreambw.o
 
 ifeq ($(GDRAPI_ARCH),X86)
 SIMD_OBJS := pcibarlat_memcpy_avx.o pcibarlat_memcpy_sse41.o
+PCIBARSTREAMBW_CXXFLAGS := -msse4.1
 LAT_OBJS += $(SIMD_OBJS)
 BW_OBJS += $(SIMD_OBJS)
 STREAMBW_OBJS += $(SIMD_OBJS)
@@ -45,6 +46,7 @@ gdrcopy_pcibarstreambw: $(STREAMBW_OBJS)
 pcibarlat.o: pcibarlat.cpp
 pcibarbw.o: pcibarbw.cpp
 pcibarstreambw.o: pcibarstreambw.cpp
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(PCIBARSTREAMBW_CXXFLAGS) -c -o $@ $<
 
 pcibarlat_memcpy_avx.o: memcpy_avx.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) -mavx -c -o $@ $<

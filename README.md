@@ -223,7 +223,7 @@ closing gdrdrv
 
 
 
-The PCI BAR latency benchmark can also be built independently without CUDA or libgdrapi:
+The PCI BAR latency and bandwidth benchmarks can also be built independently without CUDA or libgdrapi:
 
 ```shell
 make -C tests/pcibarlat
@@ -236,6 +236,7 @@ It creates `/dev/pcibarlat_physmem` for a configurable physical address range:
 make -C tests/pcibarlat driver
 sudo insmod tests/pcibarlat/driver/pcibarlat_physmem.ko phys_addr=0x8800000000 map_size=0x800000
 sudo tests/pcibarlat/gdrcopy_pcibarlat -f /dev/pcibarlat_physmem -s 8M -R
+sudo tests/pcibarlat/gdrcopy_pcibarbw -f /dev/pcibarlat_physmem -s 8M -c 128K -R
 ```
 
 $ sudo gdrcopy_pcibarlat -f /sys/bus/pci/devices/0000:06:00.0/resource1 -s 8M -R

@@ -79,8 +79,8 @@ static int pcibarlat_physmem_mmap(struct file *file, struct vm_area_struct *vma)
     else
         vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 
-    return remap_pfn_range(vma, vma->vm_start, requested_phys >> PAGE_SHIFT,
-                           requested_size, vma->vm_page_prot);
+    return io_remap_pfn_range(vma, vma->vm_start, requested_phys >> PAGE_SHIFT,
+                               requested_size, vma->vm_page_prot);
 }
 
 static const struct file_operations pcibarlat_physmem_fops = {

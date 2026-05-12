@@ -223,6 +223,12 @@ closing gdrdrv
 
 
 
+The PCI BAR latency benchmark can also be built independently without CUDA or libgdrapi:
+
+```shell
+make -C tests/pcibarlat
+```
+
 $ sudo gdrcopy_pcibarlat -f /sys/bus/pci/devices/0000:06:00.0/resource1 -s 8M -R
 resource file: /sys/bus/pci/devices/0000:06:00.0/resource1
 BAR offset: 0x0

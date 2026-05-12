@@ -117,6 +117,7 @@ dist-lib: lib
 dist-tests: exes
 	mkdir -p $(INSTALL_ROOT)/gdrcopy-tests/bin
 	cp tests/gdrcopy_* $(INSTALL_ROOT)/gdrcopy-tests/bin/
+	cp tests/pcibarlat/gdrcopy_pcibarlat $(INSTALL_ROOT)/gdrcopy-tests/bin/
 	cp LICENSE $(INSTALL_ROOT)/gdrcopy-tests/
 	cd $(INSTALL_ROOT) && \
 	tar czf ../gdrcopy-tests-$(OS)-$(ARCH)-$(LIB_VER).tar.gz gdrcopy-tests/

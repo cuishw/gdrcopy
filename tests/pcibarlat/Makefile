@@ -1,15 +1,15 @@
 DESTBIN ?=
 UNAME_M := $(shell uname -m)
-GDRAPI_ARCH ?= $(shell if [ -x ../../config_arch ]; then ../../config_arch; else echo UNKNOWN; fi)
-ifeq ($(GDRAPI_ARCH),UNKNOWN)
 ifneq ($(filter x86_64 i386 i486 i586 i686,$(UNAME_M)),)
-GDRAPI_ARCH := X86
+DETECTED_GDRAPI_ARCH := X86
 else ifneq ($(filter aarch64 arm64,$(UNAME_M)),)
-GDRAPI_ARCH := ARM64
+DETECTED_GDRAPI_ARCH := ARM64
 else ifneq ($(filter ppc64 ppc64le,$(UNAME_M)),)
-GDRAPI_ARCH := PPC64
+DETECTED_GDRAPI_ARCH := PPC64
+else
+DETECTED_GDRAPI_ARCH := UNKNOWN
 endif
-endif
+GDRAPI_ARCH ?= $(DETECTED_GDRAPI_ARCH)
 
 COMMONCFLAGS := -O2
 CFLAGS   += $(COMMONCFLAGS)

@@ -40,6 +40,7 @@ The library comes with a few tests like:
 - gdrcopy_copylat, a benchmark application which calculates the R/W copy latency for a range of buffer sizes.
 - gdrcopy_apiperf, an application for benchmarking the latency of each GDRCopy API call.
 - gdrcopy_pplat, a benchmark application which calculates the round-trip ping-pong latency between GPU and CPU.
+- gdrcopy_pcibarlat, a benchmark application which mmaps a PCI sysfs `resource<N>` file and measures CPU copy latency to/from the BAR without CUDA or gdrdrv.
 
 ## Requirements
 
@@ -218,6 +219,22 @@ read BW: 530.135MB/s
 unmapping buffer
 unpinning buffer
 closing gdrdrv
+
+
+
+
+$ sudo gdrcopy_pcibarlat -f /sys/bus/pci/devices/0000:06:00.0/resource1 -s 8M -R
+resource file: /sys/bus/pci/devices/0000:06:00.0/resource1
+BAR offset: 0x0
+mapped size: 8388608
+user-space BAR pointer: 0x7f0000000000
+subtract empty loop: yes
+
+pcibar_copy_from_mapping num iters for each size: 100
+Test 			 Size(B) 	 Avg.Time(us)
+pcibar_copy_from_mapping 	        1 	      0.6000
+pcibar_copy_from_mapping 	        2 	      0.6000
+...
 
 
 $ gdrcopy_copylat

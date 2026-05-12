@@ -17,12 +17,14 @@ COMMONCFLAGS := -O2
 CFLAGS   += $(COMMONCFLAGS)
 CXXFLAGS += $(COMMONCFLAGS)
 
-CUDA_VERSION := $(shell $(GET_CUDA_VERSION) $(NVCC))
+CUDA_VERSION := $(shell if [ -x "$(NVCC)" ]; then $(GET_CUDA_VERSION) $(NVCC); fi)
 CUDA_VERSION_MAJOR := $(shell echo $(CUDA_VERSION) | cut -d. -f1)
 CUDA_VERSION_MINOR := $(shell echo $(CUDA_VERSION) | cut -d. -f2)
 
+ifneq ($(CUDA_VERSION_MAJOR),)
 ifeq ($(shell [ $(CUDA_VERSION_MAJOR) -ge 13 ] && echo yes),yes)
     NVCC_STD += --std=c++17
+endif
 endif
 
 # Get NVCC flags for compute capabilities from shell script
@@ -30,17 +32,14 @@ NVCCFLAGS ?= $(shell $(GET_CUDA_GENCODE) $(NVCC)) $(NVCC_STD)
 
 LIBS     := -lcuda -lpthread -ldl -lgdrapi
 
-ifeq ($(GDRAPI_ARCH),X86)
-PCIBARLAT_SIMD_OBJS := pcibarlat_memcpy_avx.o pcibarlat_memcpy_sse41.o
-endif
-
-CPP_SRCS := copybw.cpp sanity.cpp copylat.cpp apiperf.cpp pcibarlat.cpp
+CPP_SRCS := copybw.cpp sanity.cpp copylat.cpp apiperf.cpp
 CU_SRCS  := pplat.cu
 EXES := $(patsubst %.cpp,gdrcopy_%,$(CPP_SRCS)) $(patsubst %.cu,gdrcopy_%,$(CU_SRCS))
+PCIBARLAT_EXE := pcibarlat/gdrcopy_pcibarlat
 
 all: exes
 
-exes: $(EXES)
+exes: $(EXES) $(PCIBARLAT_EXE)
 
 testsuites/testsuite.o: testsuites/testsuite.cpp testsuites/testsuite.hpp common.hpp
 common.o: common.cpp $(GDRAPI_INC)/gdrapi.h common.hpp
@@ -48,7 +47,6 @@ copybw.o: copybw.cpp $(GDRAPI_INC)/gdrapi.h common.hpp
 sanity.o: sanity.cpp $(GDRAPI_INC)/gdrapi.h $(GDRAPI_SRC)/gdrapi_internal.h common.hpp testsuites/testsuite.hpp
 copylat.o: copylat.cpp $(GDRAPI_INC)/gdrapi.h common.hpp
 apiperf.o: apiperf.cpp $(GDRAPI_INC)/gdrapi.h common.hpp
-pcibarlat.o: pcibarlat.cpp
 
 gdrcopy_copybw: copybw.o common.o
 	$(LINK.cc)  -o $@ $^ $(LIBS) -lrt
@@ -62,23 +60,18 @@ gdrcopy_copylat: copylat.o common.o
 gdrcopy_apiperf: apiperf.o common.o
 	$(LINK.cc)  -o $@ $^ $(LIBS) -lrt
 
-gdrcopy_pcibarlat: pcibarlat.o $(PCIBARLAT_SIMD_OBJS)
-	$(LINK.cc)  -o $@ $^ -lrt
-
 gdrcopy_pplat: pplat.o common.o
 	$(NVCC)  -o $@ $^ $(LDFLAGS) -lgdrapi -lcuda
 
-pcibarlat_memcpy_avx.o: $(GDRAPI_SRC)/memcpy_avx.c
-	$(CC) $(CFLAGS) $(CPPFLAGS) -mavx -c -o $@ $^
-
-pcibarlat_memcpy_sse41.o: $(GDRAPI_SRC)/memcpy_sse41.c
-	$(CC) $(CFLAGS) $(CPPFLAGS) -msse4.1 -c -o $@ $^
+$(PCIBARLAT_EXE): FORCE
+	$(MAKE) -C pcibarlat
 
 %.o: %.cu
 	$(NVCC) -o $@ -c $^ $(LIBS) $(CPPFLAGS) $(NVCCFLAGS)
 
 clean:
 	rm -f *.o $(EXES) *~ core.* testsuites/*.o
+	$(MAKE) -C pcibarlat clean
 
 install: exes
 	@ echo "installing exes in $(DESTBIN)..." && \
@@ -86,14 +79,13 @@ install: exes
 	install -D -v -m u=rwx,g=rx,o=rx gdrcopy_copybw -t $(DESTBIN) && \
 	install -D -v -m u=rwx,g=rx,o=rx gdrcopy_copylat -t $(DESTBIN) && \
 	install -D -v -m u=rwx,g=rx,o=rx gdrcopy_apiperf -t $(DESTBIN) && \
-	install -D -v -m u=rwx,g=rx,o=rx gdrcopy_pcibarlat -t $(DESTBIN) && \
 	install -D -v -m u=rwx,g=rx,o=rx gdrcopy_sanity -t $(DESTBIN) && \
 	install -D -v -m u=rwx,g=rx,o=rx gdrcopy_pplat -t $(DESTBIN)
+	$(MAKE) -C pcibarlat install DESTBIN=$(abspath $(DESTBIN))
 	cd $(DESTBIN) && \
 	ln -sf gdrcopy_copybw copybw && \
 	ln -sf gdrcopy_copylat copylat && \
 	ln -sf gdrcopy_apiperf apiperf && \
-	ln -sf gdrcopy_pcibarlat pcibarlat && \
 	ln -sf gdrcopy_sanity sanity
 
-.PHONY: clean all exes install
+.PHONY: clean all exes install FORCE

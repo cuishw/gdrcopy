@@ -3,6 +3,7 @@ CUDA ?= /usr/local/cuda
 NVCC ?= $(CUDA)/bin/nvcc
 GET_CUDA_GENCODE ?= ../scripts/get_cuda_gencode.sh
 GET_CUDA_VERSION ?= ../scripts/get_cuda_version.sh
+GDRAPI_ARCH ?= $(shell ../config_arch)
 
 GDRAPI_INC := ../include
 GDRAPI_SRC := ../src
@@ -29,7 +30,11 @@ NVCCFLAGS ?= $(shell $(GET_CUDA_GENCODE) $(NVCC)) $(NVCC_STD)
 
 LIBS     := -lcuda -lpthread -ldl -lgdrapi
 
-CPP_SRCS := copybw.cpp sanity.cpp copylat.cpp apiperf.cpp
+ifeq ($(GDRAPI_ARCH),X86)
+PCIBARLAT_SIMD_OBJS := pcibarlat_memcpy_avx.o pcibarlat_memcpy_sse41.o
+endif
+
+CPP_SRCS := copybw.cpp sanity.cpp copylat.cpp apiperf.cpp pcibarlat.cpp
 CU_SRCS  := pplat.cu
 EXES := $(patsubst %.cpp,gdrcopy_%,$(CPP_SRCS)) $(patsubst %.cu,gdrcopy_%,$(CU_SRCS))
 
@@ -43,6 +48,7 @@ copybw.o: copybw.cpp $(GDRAPI_INC)/gdrapi.h common.hpp
 sanity.o: sanity.cpp $(GDRAPI_INC)/gdrapi.h $(GDRAPI_SRC)/gdrapi_internal.h common.hpp testsuites/testsuite.hpp
 copylat.o: copylat.cpp $(GDRAPI_INC)/gdrapi.h common.hpp
 apiperf.o: apiperf.cpp $(GDRAPI_INC)/gdrapi.h common.hpp
+pcibarlat.o: pcibarlat.cpp
 
 gdrcopy_copybw: copybw.o common.o
 	$(LINK.cc)  -o $@ $^ $(LIBS) -lrt
@@ -56,8 +62,17 @@ gdrcopy_copylat: copylat.o common.o
 gdrcopy_apiperf: apiperf.o common.o
 	$(LINK.cc)  -o $@ $^ $(LIBS) -lrt
 
+gdrcopy_pcibarlat: pcibarlat.o $(PCIBARLAT_SIMD_OBJS)
+	$(LINK.cc)  -o $@ $^ -lrt
+
 gdrcopy_pplat: pplat.o common.o
 	$(NVCC)  -o $@ $^ $(LDFLAGS) -lgdrapi -lcuda
+
+pcibarlat_memcpy_avx.o: $(GDRAPI_SRC)/memcpy_avx.c
+	$(CC) $(CFLAGS) $(CPPFLAGS) -mavx -c -o $@ $^
+
+pcibarlat_memcpy_sse41.o: $(GDRAPI_SRC)/memcpy_sse41.c
+	$(CC) $(CFLAGS) $(CPPFLAGS) -msse4.1 -c -o $@ $^
 
 %.o: %.cu
 	$(NVCC) -o $@ -c $^ $(LIBS) $(CPPFLAGS) $(NVCCFLAGS)
@@ -71,12 +86,14 @@ install: exes
 	install -D -v -m u=rwx,g=rx,o=rx gdrcopy_copybw -t $(DESTBIN) && \
 	install -D -v -m u=rwx,g=rx,o=rx gdrcopy_copylat -t $(DESTBIN) && \
 	install -D -v -m u=rwx,g=rx,o=rx gdrcopy_apiperf -t $(DESTBIN) && \
+	install -D -v -m u=rwx,g=rx,o=rx gdrcopy_pcibarlat -t $(DESTBIN) && \
 	install -D -v -m u=rwx,g=rx,o=rx gdrcopy_sanity -t $(DESTBIN) && \
 	install -D -v -m u=rwx,g=rx,o=rx gdrcopy_pplat -t $(DESTBIN)
 	cd $(DESTBIN) && \
 	ln -sf gdrcopy_copybw copybw && \
 	ln -sf gdrcopy_copylat copylat && \
 	ln -sf gdrcopy_apiperf apiperf && \
+	ln -sf gdrcopy_pcibarlat pcibarlat && \
 	ln -sf gdrcopy_sanity sanity
 
 .PHONY: clean all exes install

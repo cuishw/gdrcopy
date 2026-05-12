@@ -16,10 +16,11 @@ CFLAGS   += $(COMMONCFLAGS)
 CXXFLAGS += $(COMMONCFLAGS)
 LDLIBS   += -lrt -lpthread
 
-EXES := gdrcopy_pcibarlat gdrcopy_pcibarbw gdrcopy_pcibarstreambw
+EXES := gdrcopy_pcibarlat gdrcopy_pcibarbw gdrcopy_pcibarstreambw gdrcopy_pcibardsabw
 LAT_OBJS := pcibarlat.o
 BW_OBJS := pcibarbw.o
 STREAMBW_OBJS := pcibarstreambw.o
+DSABW_OBJS := pcibardsabw.o
 
 ifeq ($(GDRAPI_ARCH),X86)
 SIMD_OBJS := pcibarlat_memcpy_avx.o pcibarlat_memcpy_sse41.o
@@ -43,10 +44,14 @@ gdrcopy_pcibarbw: $(BW_OBJS)
 gdrcopy_pcibarstreambw: $(STREAMBW_OBJS)
 	$(LINK.cc) -o $@ $^ $(LDLIBS)
 
+gdrcopy_pcibardsabw: $(DSABW_OBJS)
+	$(LINK.cc) -o $@ $^ $(LDLIBS)
+
 pcibarlat.o: pcibarlat.cpp
 pcibarbw.o: pcibarbw.cpp
 pcibarstreambw.o: pcibarstreambw.cpp
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(PCIBARSTREAMBW_CXXFLAGS) -c -o $@ $<
+pcibardsabw.o: pcibardsabw.cpp
 
 pcibarlat_memcpy_avx.o: memcpy_avx.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) -mavx -c -o $@ $<
@@ -58,7 +63,7 @@ install: all
 	@ echo "installing pcibarlat exes in $(DESTBIN)..." && \
 	mkdir -p $(DESTBIN) && \
 	install -D -v -m u=rwx,g=rx,o=rx $(EXES) -t $(DESTBIN)
-	cd $(DESTBIN) && ln -sf gdrcopy_pcibarlat pcibarlat && ln -sf gdrcopy_pcibarbw pcibarbw && ln -sf gdrcopy_pcibarstreambw pcibarstreambw
+	cd $(DESTBIN) && ln -sf gdrcopy_pcibarlat pcibarlat && ln -sf gdrcopy_pcibarbw pcibarbw && ln -sf gdrcopy_pcibarstreambw pcibarstreambw && ln -sf gdrcopy_pcibardsabw pcibardsabw
 
 clean:
 	rm -f *.o $(EXES) *~ core.*

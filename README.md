@@ -238,6 +238,7 @@ sudo insmod tests/pcibarlat/driver/pcibarlat_physmem.ko phys_addr=0x8800000000 m
 sudo tests/pcibarlat/gdrcopy_pcibarlat -f /dev/pcibarlat_physmem -s 8M -R
 sudo tests/pcibarlat/gdrcopy_pcibarbw -f /dev/pcibarlat_physmem -s 8M -c 128K -R
 sudo tests/pcibarlat/gdrcopy_pcibarstreambw -f /dev/pcibarlat_physmem -s 8M -t 32 -R
+sudo tests/pcibarlat/gdrcopy_pcibardsabw -f /dev/pcibarlat_physmem -q /dev/dsa/wq0.0 -s 8M -t 32 -R
 ```
 
 $ sudo gdrcopy_pcibarlat -f /sys/bus/pci/devices/0000:06:00.0/resource1 -s 8M -R

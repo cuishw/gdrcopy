@@ -26,7 +26,7 @@ Run `gdrcopy_pcibarlat` against the character device:
 
 ```shell
 sudo tests/pcibarlat/gdrcopy_pcibarlat -f /dev/pcibarlat_physmem -s 8M -R
-sudo tests/pcibarlat/gdrcopy_pcibarstreambw -f /dev/pcibarlat_physmem -s 256M -t 32 -R
+sudo tests/pcibarlat/gdrcopy_pcibarstreambw -f /dev/pcibarlat_physmem -s 8M -t 32 -R
 ```
 
 Use the benchmark `-o <offset>` option to select an offset inside the configured

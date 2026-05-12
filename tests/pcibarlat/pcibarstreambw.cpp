@@ -71,8 +71,7 @@
 #define PAGE_ROUND_DOWN(x, n) ((x) & ~((n) - 1))
 #define PAGE_ROUND_UP(x, n) (((x) + ((n) - 1)) & ~((n) - 1))
 
-static const size_t min_worker_size = (size_t)2 << 20;
-static size_t map_size_opt = (size_t)1 << 23;
+static size_t per_thread_size = (size_t)8 << 20;
 static size_t bar_offset = 0;
 static int num_iters = 100;
 static int num_threads = 0;
@@ -259,21 +258,15 @@ static int get_online_cpus()
     return (int)cpus;
 }
 
-static int get_default_threads(size_t size)
-{
-    int online_cpus = get_online_cpus();
-    size_t size_limited_threads = std::max((size_t)1, size / min_worker_size);
-    return std::max(1, std::min(online_cpus, (int)size_limited_threads));
-}
 
 static void print_usage(const char *path)
 {
     std::cout << "Usage: " << path << " -f /sys/bus/pci/devices/<BDF>/resource<N> [options]\n\n";
     std::cout << "Options:\n";
     std::cout << "   -f <file>       PCI sysfs resource file or pcibarlat_physmem device to mmap (required)\n";
-    std::cout << "   -s <size>       Mapping size, accepts K/M/G suffixes (default: " << map_size_opt << ")\n";
+    std::cout << "   -s <size>       Per-thread stream size, accepts K/M/G suffixes (default: " << per_thread_size << ")\n";
     std::cout << "   -i <iters>      Number of full-range stream iterations (default: " << num_iters << ")\n";
-    std::cout << "   -t <threads>    Number of worker threads (default: auto, at least 2MiB per worker)\n";
+    std::cout << "   -t <threads>    Number of worker threads (default: online CPUs)\n";
     std::cout << "   -o <offset>     BAR offset to benchmark (default: " << bar_offset << ")\n";
     std::cout << "   -p <cpu>        Pin worker 0 to this CPU and subsequent workers to following CPUs\n";
     std::cout << "   -R              Benchmark CPU reads from BAR (default: yes)\n";
@@ -281,8 +274,8 @@ static void print_usage(const char *path)
     std::cout << "   -B              Benchmark both reads and writes\n";
     std::cout << "   -h              Print this help text\n\n";
     std::cout << "Example:\n";
-    std::cout << "   " << path << " -f /sys/bus/pci/devices/0000:65:00.0/resource1_wc -s 256M -t 32 -R\n";
-    std::cout << "   sudo " << path << " -f /dev/pcibarlat_physmem -s 256M -t 32 -B\n";
+    std::cout << "   " << path << " -f /sys/bus/pci/devices/0000:65:00.0/resource1_wc -s 8M -t 32 -R\n";
+    std::cout << "   sudo " << path << " -f /dev/pcibarlat_physmem -s 8M -t 32 -B\n";
 }
 
 static void pin_worker_if_requested(int cpu_id)
@@ -320,17 +313,13 @@ static void *stream_worker(void *opaque)
     return NULL;
 }
 
-static double run_stream_test(void *bar_ptr, size_t size, bool write_test)
+static double run_stream_test(void *bar_ptr, size_t worker_size, bool write_test)
 {
     pthread_barrier_t start_barrier;
     pthread_barrier_t end_barrier;
     std::vector<pthread_t> threads(num_threads);
     std::vector<struct worker_args> args(num_threads);
     std::vector<void *> host_bufs(num_threads, NULL);
-    size_t worker_size = size / (size_t)num_threads;
-    if (worker_size == 0)
-        die_msg("mapping size is too small for the requested thread count");
-
     worker_size = (worker_size / 64) * 64;
     if (worker_size == 0)
         die_msg("per-thread mapping slice is too small after alignment");
@@ -388,7 +377,7 @@ int main(int argc, char **argv)
                 resource_path = optarg;
                 break;
             case 's':
-                map_size_opt = parse_size(optarg, "mapping size");
+                per_thread_size = parse_size(optarg, "per-thread stream size");
                 break;
             case 'i':
                 num_iters = (int)parse_long(optarg, "iterations");
@@ -432,7 +421,7 @@ int main(int argc, char **argv)
     if (num_threads < 0)
         die_msg("thread count must be non-negative");
     if (num_threads == 0)
-        num_threads = get_default_threads(map_size_opt);
+        num_threads = get_online_cpus();
     if (num_threads <= 0)
         die_msg("thread count must be positive");
 
@@ -445,7 +434,10 @@ int main(int argc, char **argv)
     const size_t page_size = (size_t)page_size_long;
     const off_t map_offset = (off_t)PAGE_ROUND_DOWN(bar_offset, page_size);
     const size_t page_delta = bar_offset - (size_t)map_offset;
-    const size_t map_size = PAGE_ROUND_UP(page_delta + map_size_opt, page_size);
+    const size_t total_stream_size = per_thread_size * (size_t)num_threads;
+    if (num_threads != 0 && total_stream_size / (size_t)num_threads != per_thread_size)
+        die_msg("total stream size overflow");
+    const size_t map_size = PAGE_ROUND_UP(page_delta + total_stream_size, page_size);
 
     int open_flags = do_write ? O_RDWR : O_RDONLY;
 #ifdef O_SYNC
@@ -465,9 +457,9 @@ int main(int argc, char **argv)
     std::cout << "resource file: " << resource_path << std::endl;
     std::cout << "BAR offset: 0x" << std::hex << bar_offset << std::dec << std::endl;
     std::cout << "mapped size: " << map_size << std::endl;
-    std::cout << "stream size: " << map_size_opt << std::endl;
+    std::cout << "per-thread stream size: " << per_thread_size << std::endl;
+    std::cout << "total stream size: " << total_stream_size << std::endl;
     std::cout << "threads: " << num_threads << std::endl;
-    std::cout << "worker stream size: " << ((map_size_opt / (size_t)num_threads) / 64 * 64) << std::endl;
     std::cout << "iterations: " << num_iters << std::endl;
     std::cout << "user-space BAR pointer: " << bar_ptr << std::endl;
     std::cout << "optimized copy: "
@@ -481,12 +473,12 @@ int main(int argc, char **argv)
     printf("Test \t\t Threads \t Size(B) \t Avg.BW(MB/s)\n");
     if (do_write) {
         std::cout << "WARNING: writes to a PCI BAR can modify device memory/registers; pass only a safe GPU memory BAR/window." << std::endl;
-        double bw = run_stream_test(bar_ptr, map_size_opt, true);
-        printf("pcibar_stream_write_bw \t %7d \t %8zu \t %12.2f\n", num_threads, map_size_opt, bw);
+        double bw = run_stream_test(bar_ptr, per_thread_size, true);
+        printf("pcibar_stream_write_bw \t %7d \t %8zu \t %12.2f\n", num_threads, total_stream_size, bw);
     }
     if (do_read) {
-        double bw = run_stream_test(bar_ptr, map_size_opt, false);
-        printf("pcibar_stream_read_bw \t %7d \t %8zu \t %12.2f\n", num_threads, map_size_opt, bw);
+        double bw = run_stream_test(bar_ptr, per_thread_size, false);
+        printf("pcibar_stream_read_bw \t %7d \t %8zu \t %12.2f\n", num_threads, total_stream_size, bw);
     }
 
     if (munmap(map_base, map_size) != 0)

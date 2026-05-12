@@ -223,6 +223,21 @@ closing gdrdrv
 
 
 
+The PCI BAR latency benchmark can also be built independently without CUDA or libgdrapi:
+
+```shell
+make -C tests/pcibarlat
+```
+
+A helper driver is available when a PCI sysfs `resource<N>_wc` file is not suitable.
+It creates `/dev/pcibarlat_physmem` for a configurable physical address range:
+
+```shell
+make -C tests/pcibarlat driver
+sudo insmod tests/pcibarlat/driver/pcibarlat_physmem.ko phys_addr=0x8800000000 map_size=0x800000
+sudo tests/pcibarlat/gdrcopy_pcibarlat -f /dev/pcibarlat_physmem -s 8M -R
+```
+
 $ sudo gdrcopy_pcibarlat -f /sys/bus/pci/devices/0000:06:00.0/resource1 -s 8M -R
 resource file: /sys/bus/pci/devices/0000:06:00.0/resource1
 BAR offset: 0x0

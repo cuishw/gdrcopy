@@ -19,13 +19,14 @@ Load the driver with a page-aligned physical base address and size:
 
 ```shell
 sudo insmod tests/pcibarlat/driver/pcibarlat_physmem.ko \
-    phys_addr=0x8800000000 map_size=0x800000 wc_mapping=1
+    phys_addr=0x8800000000 map_size=0x10000000 wc_mapping=1
 ```
 
 Run `gdrcopy_pcibarlat` against the character device:
 
 ```shell
 sudo tests/pcibarlat/gdrcopy_pcibarlat -f /dev/pcibarlat_physmem -s 8M -R
+sudo tests/pcibarlat/gdrcopy_pcibarstreambw -f /dev/pcibarlat_physmem -s 256M -t 32 -R
 ```
 
 Use the benchmark `-o <offset>` option to select an offset inside the configured

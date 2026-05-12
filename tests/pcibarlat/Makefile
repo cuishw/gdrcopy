@@ -4,16 +4,18 @@ GDRAPI_ARCH ?= $(shell ../../config_arch)
 COMMONCFLAGS := -O2
 CFLAGS   += $(COMMONCFLAGS)
 CXXFLAGS += $(COMMONCFLAGS)
-LDLIBS   += -lrt
+LDLIBS   += -lrt -lpthread
 
-EXES := gdrcopy_pcibarlat gdrcopy_pcibarbw
+EXES := gdrcopy_pcibarlat gdrcopy_pcibarbw gdrcopy_pcibarstreambw
 LAT_OBJS := pcibarlat.o
 BW_OBJS := pcibarbw.o
+STREAMBW_OBJS := pcibarstreambw.o
 
 ifeq ($(GDRAPI_ARCH),X86)
 SIMD_OBJS := pcibarlat_memcpy_avx.o pcibarlat_memcpy_sse41.o
 LAT_OBJS += $(SIMD_OBJS)
 BW_OBJS += $(SIMD_OBJS)
+STREAMBW_OBJS += $(SIMD_OBJS)
 endif
 
 all: $(EXES)
@@ -27,8 +29,12 @@ gdrcopy_pcibarlat: $(LAT_OBJS)
 gdrcopy_pcibarbw: $(BW_OBJS)
 	$(LINK.cc) -o $@ $^ $(LDLIBS)
 
+gdrcopy_pcibarstreambw: $(STREAMBW_OBJS)
+	$(LINK.cc) -o $@ $^ $(LDLIBS)
+
 pcibarlat.o: pcibarlat.cpp
 pcibarbw.o: pcibarbw.cpp
+pcibarstreambw.o: pcibarstreambw.cpp
 
 pcibarlat_memcpy_avx.o: memcpy_avx.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) -mavx -c -o $@ $<
@@ -40,7 +46,7 @@ install: all
 	@ echo "installing pcibarlat exes in $(DESTBIN)..." && \
 	mkdir -p $(DESTBIN) && \
 	install -D -v -m u=rwx,g=rx,o=rx $(EXES) -t $(DESTBIN)
-	cd $(DESTBIN) && ln -sf gdrcopy_pcibarlat pcibarlat && ln -sf gdrcopy_pcibarbw pcibarbw
+	cd $(DESTBIN) && ln -sf gdrcopy_pcibarlat pcibarlat && ln -sf gdrcopy_pcibarbw pcibarbw && ln -sf gdrcopy_pcibarstreambw pcibarstreambw
 
 clean:
 	rm -f *.o $(EXES) *~ core.*

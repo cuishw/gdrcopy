@@ -16,6 +16,9 @@ endif
 
 all: $(EXE)
 
+driver:
+	$(MAKE) -C driver
+
 $(EXE): $(OBJS)
 	$(LINK.cc) -o $@ $^ $(LDLIBS)
 
@@ -35,5 +38,6 @@ install: all
 
 clean:
 	rm -f *.o $(EXE) *~ core.*
+	$(MAKE) -C driver clean
 
-.PHONY: all install clean
+.PHONY: all driver install clean

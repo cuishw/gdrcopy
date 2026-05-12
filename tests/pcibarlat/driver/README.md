@@ -3,7 +3,8 @@
 `pcibarlat_physmem` is a small helper driver for `gdrcopy_pcibarlat`.  It
 creates `/dev/pcibarlat_physmem` and maps a configurable physical address range
 with write-combining attributes, similar to using a PCI sysfs `resource<N>_wc`
-file.
+file.  The module declares a dual MIT/GPL license because Linux exports the
+write-combining page-protection helper as a GPL-only symbol on some kernels.
 
 Build the benchmark and driver independently:
 

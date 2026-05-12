@@ -1,4 +1,5 @@
 /*
+ * SPDX-License-Identifier: MIT OR GPL-2.0-only
  * Copyright (c) 2026. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -127,6 +128,6 @@ static void __exit pcibarlat_physmem_exit(void)
 module_init(pcibarlat_physmem_init);
 module_exit(pcibarlat_physmem_exit);
 
-MODULE_LICENSE("MIT");
+MODULE_LICENSE("Dual MIT/GPL");
 MODULE_AUTHOR("GDRCopy");
 MODULE_DESCRIPTION("Configurable physical memory mmap driver for pcibarlat");

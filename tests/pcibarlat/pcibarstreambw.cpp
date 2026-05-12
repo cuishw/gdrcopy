@@ -71,6 +71,7 @@
 #define PAGE_ROUND_DOWN(x, n) ((x) & ~((n) - 1))
 #define PAGE_ROUND_UP(x, n) (((x) + ((n) - 1)) & ~((n) - 1))
 
+static const size_t min_worker_size = (size_t)2 << 20;
 static size_t map_size_opt = (size_t)1 << 23;
 static size_t bar_offset = 0;
 static int num_iters = 100;
@@ -250,12 +251,19 @@ static size_t parse_size(const char *value, const char *name, bool allow_zero = 
     return (size_t)result;
 }
 
-static int get_default_threads()
+static int get_online_cpus()
 {
     long cpus = sysconf(_SC_NPROCESSORS_ONLN);
     if (cpus <= 0)
         return 1;
     return (int)cpus;
+}
+
+static int get_default_threads(size_t size)
+{
+    int online_cpus = get_online_cpus();
+    size_t size_limited_threads = std::max((size_t)1, size / min_worker_size);
+    return std::max(1, std::min(online_cpus, (int)size_limited_threads));
 }
 
 static void print_usage(const char *path)
@@ -265,7 +273,7 @@ static void print_usage(const char *path)
     std::cout << "   -f <file>       PCI sysfs resource file or pcibarlat_physmem device to mmap (required)\n";
     std::cout << "   -s <size>       Mapping size, accepts K/M/G suffixes (default: " << map_size_opt << ")\n";
     std::cout << "   -i <iters>      Number of full-range stream iterations (default: " << num_iters << ")\n";
-    std::cout << "   -t <threads>    Number of worker threads (default: online CPUs)\n";
+    std::cout << "   -t <threads>    Number of worker threads (default: auto, at least 2MiB per worker)\n";
     std::cout << "   -o <offset>     BAR offset to benchmark (default: " << bar_offset << ")\n";
     std::cout << "   -p <cpu>        Pin worker 0 to this CPU and subsequent workers to following CPUs\n";
     std::cout << "   -R              Benchmark CPU reads from BAR (default: yes)\n";
@@ -351,8 +359,8 @@ static double run_stream_test(void *bar_ptr, size_t size, bool write_test)
     }
 
     struct timespec beg, end;
-    clock_gettime(MYCLOCK, &beg);
     pthread_barrier_wait(&start_barrier);
+    clock_gettime(MYCLOCK, &beg);
     pthread_barrier_wait(&end_barrier);
     clock_gettime(MYCLOCK, &end);
 
@@ -373,8 +381,6 @@ static double run_stream_test(void *bar_ptr, size_t size, bool write_test)
 
 int main(int argc, char **argv)
 {
-    num_threads = get_default_threads();
-
     int c;
     while ((c = getopt(argc, argv, "f:s:i:t:o:p:RWBh")) != -1) {
         switch (c) {
@@ -421,8 +427,14 @@ int main(int argc, char **argv)
         print_usage(argv[0]);
         die_msg("ERROR: -f <resource file> is required");
     }
-    if (num_iters <= 0 || num_threads <= 0)
-        die_msg("iterations and thread count must be positive");
+    if (num_iters <= 0)
+        die_msg("iterations must be positive");
+    if (num_threads < 0)
+        die_msg("thread count must be non-negative");
+    if (num_threads == 0)
+        num_threads = get_default_threads(map_size_opt);
+    if (num_threads <= 0)
+        die_msg("thread count must be positive");
 
     use_avx_copy = cpu_has_avx();
     use_sse41_copy = cpu_has_sse41();
@@ -455,6 +467,7 @@ int main(int argc, char **argv)
     std::cout << "mapped size: " << map_size << std::endl;
     std::cout << "stream size: " << map_size_opt << std::endl;
     std::cout << "threads: " << num_threads << std::endl;
+    std::cout << "worker stream size: " << ((map_size_opt / (size_t)num_threads) / 64 * 64) << std::endl;
     std::cout << "iterations: " << num_iters << std::endl;
     std::cout << "user-space BAR pointer: " << bar_ptr << std::endl;
     std::cout << "optimized copy: "

@@ -241,6 +241,39 @@ sudo tests/pcibarlat/gdrcopy_pcibarstreambw -f /dev/pcibarlat_physmem -s 8M -t 3
 sudo tests/pcibarlat/gdrcopy_pcibardsabw -f /dev/pcibarlat_physmem -q /dev/dsa/wq0.0 -s 8M -t 32 -R
 ```
 
+
+### Running Intel MLC on a PCI BAR mapping
+
+`tests/pcibarlat` also builds `libpcibar_mlc_intercept.so`, an `LD_PRELOAD` shim for Intel MLC.
+The shim maps a PCI sysfs `resource<N>`/`resource<N>_wc` file, or the helper `/dev/pcibarlat_physmem` device, and redirects MLC's large anonymous memory mappings to slices of that BAR mapping.
+This lets MLC's existing bandwidth kernels operate on the PCI BAR instead of normal DRAM.
+
+Example using a sysfs BAR resource:
+
+```shell
+make -C tests/pcibarlat
+sudo env \
+  LD_PRELOAD=$PWD/tests/pcibarlat/libpcibar_mlc_intercept.so \
+  PCIBAR_MLC_RESOURCE=/sys/bus/pci/devices/0000:65:00.0/resource1_wc \
+  PCIBAR_MLC_SIZE=256M \
+  PCIBAR_MLC_MIN_ALLOC=1M \
+  PCIBAR_MLC_VERBOSE=1 \
+  ./mlc --loaded_latency
+```
+
+Environment variables accepted by the shim:
+
+- `PCIBAR_MLC_RESOURCE` (required): PCI BAR resource file or `/dev/pcibarlat_physmem` to map.
+- `PCIBAR_MLC_SIZE` (required): total BAR window size made available to MLC; accepts `K`, `M`, or `G` suffixes.
+- `PCIBAR_MLC_OFFSET`: offset inside the BAR resource, default `0`.
+- `PCIBAR_MLC_MIN_ALLOC`: only allocations at least this large are redirected, default `1M`.
+- `PCIBAR_MLC_INTERCEPT`: `mmap` (default) redirects large anonymous `mmap()` calls; `alloc` redirects large aligned allocation APIs; `all` enables both paths, including large `malloc()` calls.
+- `PCIBAR_MLC_VERBOSE=1`: prints each BAR-backed allocation.
+
+Start with `PCIBAR_MLC_INTERCEPT=mmap`, because it avoids replacing MLC's small control allocations.
+If MLC on a given release allocates its benchmark buffers through aligned allocation APIs instead of anonymous `mmap()`, retry with `PCIBAR_MLC_INTERCEPT=all`.
+Writes can modify device memory/registers, so use only a safe PCI BAR memory window.
+
 $ sudo gdrcopy_pcibarlat -f /sys/bus/pci/devices/0000:06:00.0/resource1 -s 8M -R
 resource file: /sys/bus/pci/devices/0000:06:00.0/resource1
 BAR offset: 0x0

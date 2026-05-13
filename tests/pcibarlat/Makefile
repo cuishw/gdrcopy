@@ -15,8 +15,11 @@ COMMONCFLAGS := -O2
 CFLAGS   += $(COMMONCFLAGS)
 CXXFLAGS += $(COMMONCFLAGS)
 LDLIBS   += -lrt -lpthread
+LDSOFLAGS += -shared
+INTERCEPT_LDLIBS += -ldl -pthread
 
 EXES := gdrcopy_pcibarlat gdrcopy_pcibarbw gdrcopy_pcibarstreambw gdrcopy_pcibardsabw
+LIBS := libpcibar_mlc_intercept.so
 LAT_OBJS := pcibarlat.o
 BW_OBJS := pcibarbw.o
 STREAMBW_OBJS := pcibarstreambw.o
@@ -30,7 +33,7 @@ BW_OBJS += $(SIMD_OBJS)
 STREAMBW_OBJS += $(SIMD_OBJS)
 endif
 
-all: $(EXES)
+all: $(EXES) $(LIBS)
 
 driver:
 	$(MAKE) -C driver
@@ -47,11 +50,16 @@ gdrcopy_pcibarstreambw: $(STREAMBW_OBJS)
 gdrcopy_pcibardsabw: $(DSABW_OBJS)
 	$(LINK.cc) -o $@ $^ $(LDLIBS)
 
+libpcibar_mlc_intercept.so: mlc_bar_intercept.o
+	$(CC) $(LDSOFLAGS) -o $@ $^ $(INTERCEPT_LDLIBS)
+
 pcibarlat.o: pcibarlat.cpp
 pcibarbw.o: pcibarbw.cpp
 pcibarstreambw.o: pcibarstreambw.cpp
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(PCIBARSTREAMBW_CXXFLAGS) -c -o $@ $<
 pcibardsabw.o: pcibardsabw.cpp
+mlc_bar_intercept.o: mlc_bar_intercept.c
+	$(CC) $(CFLAGS) $(CPPFLAGS) -fPIC -c -o $@ $<
 
 pcibarlat_memcpy_avx.o: memcpy_avx.c
 	$(CC) $(CFLAGS) $(CPPFLAGS) -mavx -c -o $@ $<
@@ -62,11 +70,12 @@ pcibarlat_memcpy_sse41.o: memcpy_sse41.c
 install: all
 	@ echo "installing pcibarlat exes in $(DESTBIN)..." && \
 	mkdir -p $(DESTBIN) && \
-	install -D -v -m u=rwx,g=rx,o=rx $(EXES) -t $(DESTBIN)
+	install -D -v -m u=rwx,g=rx,o=rx $(EXES) -t $(DESTBIN) && \
+	install -D -v -m u=rw,g=r,o=r $(LIBS) -t $(DESTBIN)
 	cd $(DESTBIN) && ln -sf gdrcopy_pcibarlat pcibarlat && ln -sf gdrcopy_pcibarbw pcibarbw && ln -sf gdrcopy_pcibarstreambw pcibarstreambw && ln -sf gdrcopy_pcibardsabw pcibardsabw
 
 clean:
-	rm -f *.o $(EXES) *~ core.*
+	rm -f *.o $(EXES) $(LIBS) *~ core.*
 	$(MAKE) -C driver clean
 
 .PHONY: all driver install clean
